@@ -171,16 +171,21 @@ torch::Tensor fused_hash_encode_forward(
             //   result = sum_{corner} weight * embedding(corner)
             // with weight = product over dims of (offset?w:1-w).
             //
-            // Corner mapping (bit-encoded vs Python's _BOX_OFFSETS ordering):
-            //   idx bits (x,y,z)   Python off  Weight
-            //   0   000  (0,0,0)   [0,0,0]     (1-wx)*(1-wy)*(1-wz)
-            //   1   001  (1,0,0)   [1,0,0]     wx*(1-wy)*(1-wz)
-            //   2   010  (0,1,0)   [0,1,0]     (1-wx)*wy*(1-wz)
-            //   3   011  (1,1,0)   [1,1,0]     wx*wy*(1-wz)
-            //   4   100  (0,0,1)   [0,0,1]     (1-wx)*(1-wy)*wz
-            //   5   101  (1,0,1)   [1,0,1]     wx*(1-wy)*wz
-            //   6   110  (0,1,1)   [0,1,1]     (1-wx)*wy*wz
-            //   7   111  (1,1,1)   [1,1,1]     wx*wy*wz
+            // Corner spatial offsets and weights (bit-encoded):
+            //   corner  bits(x,y,z)  spatial offset [x,y,z]     weight
+            //   0       000          [0,0,0]                    (1-wx)*(1-wy)*(1-wz)
+            //   1       001          [1,0,0]  (x-bit set)       wx*(1-wy)*(1-wz)
+            //   2       010          [0,1,0]  (y-bit set)       (1-wx)*wy*(1-wz)
+            //   3       011          [1,1,0]  (x,y bits set)    wx*wy*(1-wz)
+            //   4       100          [0,0,1]  (z-bit set)       (1-wx)*(1-wy)*wz
+            //   5       101          [1,0,1]  (x,z bits set)    wx*(1-wy)*wz
+            //   6       110          [0,1,1]  (y,z bits set)    (1-wx)*wy*wz
+            //   7       111          [1,1,1]  (all bits set)    wx*wy*wz
+            //
+            // Note: spatial offsets here are sorted by bit encoding (L=x, M=y, H=z),
+            // while Python's _BOX_OFFSETS uses [i for i in 0,1 for j in 0,1 for k in 0,1]
+            // (z-major: offset 0→[0,0,0], 1→[0,0,1], ..., 4→[1,0,0], ..., 7→[1,1,1]).
+            // The iteration order differs but the weighted sum is mathematically identical.
             // ---------------------------------------------------------------
             float r0 = 0.0f;  // accumulated feature 0
             float r1 = 0.0f;  // accumulated feature 1
