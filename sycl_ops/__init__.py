@@ -1,14 +1,30 @@
 import torch
 from torch.utils.cpp_extension import load
 import os
+import sys
 
 _sycl_ops_path = os.path.dirname(os.path.abspath(__file__))
+_sycl_rt_library = r"Z:\nerf_and_3dGS\venv_xpu\Library"
+
+# Add SYCL runtime DLL directories for PYD loading at import time.
+# sycl9.dll from compiler bin (linked by PYD), sycl8.dll from venv Library (PyTorch XPU)
+_sycl_dll_dirs = [
+    r"C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin",
+    _sycl_rt_library + r"\bin",
+    _sycl_rt_library + r"\lib",
+]
+for _d in _sycl_dll_dirs:
+    if os.path.isdir(_d) and hasattr(os, 'add_dll_directory'):
+        try:
+            os.add_dll_directory(_d)
+        except Exception:
+            pass
 
 _fused_hash_encode = load(
     name="fused_hash_encode",
     sources=[os.path.join(_sycl_ops_path, "hash_encode_fwd.sycl")],
     with_sycl=True,
-    extra_sycl_cflags=["-O2"],
+    extra_sycl_cflags=["-O2", "-fsycl-targets=spir64"],
     verbose=True,
 )
 

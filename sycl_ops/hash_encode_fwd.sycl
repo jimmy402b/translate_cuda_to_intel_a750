@@ -109,7 +109,7 @@ torch::Tensor fused_hash_encode_forward(
     // Each work-item handles exactly one (point, level) pair.
     // No shared memory needed -- all work-items are independent.
     q.submit([&](sycl::handler& h) {
-        h.parallel_for(sycl::range<2>(B, N_LEVELS), [=](sycl::id<2> idx) {
+        h.parallel_for<class HashEncodeKernel>(sycl::range<2>(B, N_LEVELS), [=](sycl::id<2> idx) {
             const int point_idx = static_cast<int>(idx[0]);
             const int level = static_cast<int>(idx[1]);
 
