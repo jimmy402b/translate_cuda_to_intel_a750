@@ -1,6 +1,5 @@
 #include <sycl/sycl.hpp>
 #include <torch/extension.h>
-#include <cmath>
 
 // ---------------------------------------------------------------------------
 // Hash function -- MUST match Python utils.py::hash() exactly
@@ -68,6 +67,19 @@ torch::Tensor fused_hash_encode_forward(
                 "embeddings must be float32");
     TORCH_CHECK(log2_hashmap_size > 0 && log2_hashmap_size <= 30,
                 "log2_hashmap_size must be in [1, 30]");
+    TORCH_CHECK(bbox_min.dim() == 1 && bbox_min.size(0) == 3,
+                "bbox_min must have shape [3]");
+    TORCH_CHECK(bbox_max.dim() == 1 && bbox_max.size(0) == 3,
+                "bbox_max must have shape [3]");
+    TORCH_CHECK(embeddings.dim() == 2 && embeddings.size(0) == N_LEVELS * (1LL << log2_hashmap_size) && embeddings.size(1) == N_FEATURES,
+                "embeddings must have shape [16 * 2^log2_hashmap_size, 2]");
+
+    // Runtime guards: N_LEVELS and N_FEATURES are compile-time constants.
+    // If the Python constructor values change, this kernel must be rebuilt.
+    TORCH_CHECK(embeddings.size(0) % N_LEVELS == 0,
+                "embeddings dim 0 must be divisible by N_LEVELS (16)");
+    TORCH_CHECK(embeddings.size(1) == N_FEATURES,
+                "embeddings dim 1 must equal N_FEATURES (2)");
 
     const int64_t B = points.size(0);
     const int64_t T = 1LL << log2_hashmap_size;
