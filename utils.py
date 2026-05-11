@@ -6,8 +6,10 @@ import torch
 from ray_utils import get_rays, get_ray_directions, get_ndc_rays
 
 
-BOX_OFFSETS = torch.tensor([[[i,j,k] for i in [0, 1] for j in [0, 1] for k in [0, 1]]],
-                               device='cuda')
+_BOX_OFFSETS = torch.tensor([[[i,j,k] for i in [0, 1] for j in [0, 1] for k in [0, 1]]])
+
+def get_box_offsets(device):
+    return _BOX_OFFSETS.to(device)
 
 
 def hash(coords, log2_hashmap_size):
@@ -99,6 +101,7 @@ def get_voxel_vertices(xyz, bounding_box, resolution, log2_hashmap_size):
     resolution: number of voxels per axis
     '''
     box_min, box_max = bounding_box
+    box_min, box_max = box_min.to(xyz.device), box_max.to(xyz.device)
 
     keep_mask = xyz==torch.max(torch.min(xyz, box_max), box_min)
     if not torch.all(xyz <= box_max) or not torch.all(xyz >= box_min):
@@ -109,9 +112,9 @@ def get_voxel_vertices(xyz, bounding_box, resolution, log2_hashmap_size):
     
     bottom_left_idx = torch.floor((xyz-box_min)/grid_size).int()
     voxel_min_vertex = bottom_left_idx*grid_size + box_min
-    voxel_max_vertex = voxel_min_vertex + torch.tensor([1.0,1.0,1.0])*grid_size
+    voxel_max_vertex = voxel_min_vertex + torch.tensor([1.0,1.0,1.0], device=xyz.device)*grid_size
 
-    voxel_indices = bottom_left_idx.unsqueeze(1) + BOX_OFFSETS
+    voxel_indices = bottom_left_idx.unsqueeze(1) + get_box_offsets(xyz.device)
     hashed_voxel_indices = hash(voxel_indices, log2_hashmap_size)
 
     return voxel_min_vertex, voxel_max_vertex, hashed_voxel_indices, keep_mask

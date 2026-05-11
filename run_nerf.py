@@ -27,7 +27,12 @@ from load_scannet import load_scannet_data
 from load_LINEMOD import load_LINEMOD_data
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.xpu.is_available():
+    device = torch.device("xpu")
+elif torch.cuda.is_available():
+    device = torch.device("cuda")
+else:
+    device = torch.device("cpu")
 np.random.seed(0)
 DEBUG = False
 
@@ -213,6 +218,7 @@ def create_nerf(args):
     embed_fn, input_ch = get_embedder(args.multires, args, i=args.i_embed)
     if args.i_embed==1:
         # hashed embedding table
+        embed_fn = embed_fn.to(device)
         embedding_params = list(embed_fn.parameters())
 
     input_ch_views = 0
@@ -220,6 +226,8 @@ def create_nerf(args):
     if args.use_viewdirs:
         # if using hashed for xyz, use SH for views
         embeddirs_fn, input_ch_views = get_embedder(args.multires_views, args, i=args.i_embed_views)
+        if args.i_embed_views==1:
+            embeddirs_fn = embeddirs_fn.to(device)
 
     output_ch = 5 if args.N_importance > 0 else 4
     skips = [4]
@@ -257,6 +265,9 @@ def create_nerf(args):
                                                                 embed_fn=embed_fn,
                                                                 embeddirs_fn=embeddirs_fn,
                                                                 netchunk=args.netchunk)
+    # Phase 1: torch.compile for kernel fusion
+    if args.i_embed == 1:
+        network_query_fn = torch.compile(network_query_fn, backend="xpu")
 
     # Create optimizer
     if args.i_embed==1:
@@ -340,7 +351,7 @@ def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False, pytest=F
     raw2alpha = lambda raw, dists, act_fn=F.relu: 1.-torch.exp(-act_fn(raw)*dists)
 
     dists = z_vals[...,1:] - z_vals[...,:-1]
-    dists = torch.cat([dists, torch.Tensor([1e10]).expand(dists[...,:1].shape)], -1)  # [N_rays, N_samples]
+    dists = torch.cat([dists, torch.tensor([1e10], device=dists.device).expand(dists[...,:1].shape)], -1)  # [N_rays, N_samples]
 
     dists = dists * torch.norm(rays_d[...,None,:], dim=-1)
 
@@ -513,6 +524,8 @@ def config_parser():
                         help='layers in fine network')
     parser.add_argument("--netwidth_fine", type=int, default=256,
                         help='channels per layer in fine network')
+    parser.add_argument("--N_iters", type=int, default=50000,
+                        help='number of training iterations')
     parser.add_argument("--N_rand", type=int, default=32*32*4,
                         help='batch size (number of random rays per gradient step)')
     parser.add_argument("--lrate", type=float, default=5e-4,
@@ -814,7 +827,7 @@ def train():
         rays_rgb = torch.Tensor(rays_rgb).to(device)
 
 
-    N_iters = 50000 + 1
+    N_iters = args.N_iters + 1
     print('Begin')
     print('TRAIN views are', i_train)
     print('TEST views are', i_test)
@@ -828,6 +841,7 @@ def train():
     time_list = []
     start = start + 1
     time0 = time.time()
+    torch.set_default_device(device)
     for i in trange(start, N_iters):
         # Sample random ray batch
         if use_batching:
@@ -851,7 +865,7 @@ def train():
             pose = poses[img_i, :3,:4]
 
             if N_rand is not None:
-                rays_o, rays_d = get_rays(H, W, K, torch.Tensor(pose))  # (H, W, 3), (H, W, 3)
+                rays_o, rays_d = get_rays(H, W, K, pose)  # (H, W, 3), (H, W, 3)
 
                 if i < args.precrop_iters:
                     dH = int(H//2 * args.precrop_frac)
@@ -875,9 +889,10 @@ def train():
                 target_s = target[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
 
         #####  Core optimization loop  #####
-        rgb, depth, acc, extras = render(H, W, K, chunk=args.chunk, rays=batch_rays,
-                                                verbose=i < 10, retraw=True,
-                                                **render_kwargs_train)
+        with torch.autocast(device_type='xpu', dtype=torch.bfloat16):
+            rgb, depth, acc, extras = render(H, W, K, chunk=args.chunk, rays=batch_rays,
+                                                    verbose=i < 10, retraw=True,
+                                                    **render_kwargs_train)
 
         optimizer.zero_grad()
         img_loss = img2mse(rgb, target_s)
@@ -987,6 +1002,4 @@ def train():
 
 
 if __name__=='__main__':
-    torch.set_default_tensor_type('torch.cuda.FloatTensor')
-
     train()

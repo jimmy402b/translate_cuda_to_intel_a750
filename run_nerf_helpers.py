@@ -8,7 +8,7 @@ from hash_encoding import HashEmbedder, SHEncoder
 
 # Misc
 img2mse = lambda x, y : torch.mean((x - y) ** 2)
-mse2psnr = lambda x : -10. * torch.log(x) / torch.log(torch.Tensor([10.]))
+mse2psnr = lambda x : -10. * torch.log(x) / torch.log(torch.tensor([10.], device=x.device))
 to8b = lambda x : (255*np.clip(x,0,1)).astype(np.uint8)
 
 
@@ -243,7 +243,9 @@ class NeRFSmall(nn.Module):
 
 # Ray helpers
 def get_rays(H, W, K, c2w):
-    i, j = torch.meshgrid(torch.linspace(0, W-1, W), torch.linspace(0, H-1, H))  # pytorch's meshgrid has indexing='ij'
+    device = c2w.device if isinstance(c2w, torch.Tensor) else torch.device('cpu')
+    K = torch.as_tensor(K, device=device)
+    i, j = torch.meshgrid(torch.linspace(0, W-1, W, device=device), torch.linspace(0, H-1, H, device=device))  # pytorch's meshgrid has indexing='ij'
     i = i.t()
     j = j.t()
     dirs = torch.stack([(i-K[0][2])/K[0][0], -(j-K[1][2])/K[1][1], -torch.ones_like(i)], -1)
