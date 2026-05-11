@@ -6,9 +6,9 @@ _sycl_ops_path = os.path.dirname(os.path.abspath(__file__))
 
 _fused_hash_encode = load(
     name="fused_hash_encode",
-    sources=[os.path.join(_sycl_ops_path, "hash_encode_fwd.cpp")],
-    extra_cflags=["-fsycl"],
-    extra_ldflags=["-fsycl"],
+    sources=[os.path.join(_sycl_ops_path, "hash_encode_fwd.sycl")],
+    with_sycl=True,
+    extra_sycl_cflags=["-O2"],
     verbose=True,
 )
 
