@@ -39,10 +39,8 @@ def test_fused_same_as_pytorch():
     hash_encoding._USE_SYCL = False
     with torch.no_grad():
         ref_output, ref_mask = embedder(points)
-    hash_encoding._USE_SYCL = True
 
-    # SYCL output -- call the custom op directly (not via HashEmbedder.forward)
-    # so we can test the kernel independently
+    # SYCL output
     embeddings = torch.stack([e.weight for e in embedder.embeddings])
     sycl_output, sycl_mask = FusedHashEncode.apply(
         points, embeddings,
