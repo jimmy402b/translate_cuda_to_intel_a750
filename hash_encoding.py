@@ -4,8 +4,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import pdb
+import os
 
 from utils import get_voxel_vertices
+
+_USE_SYCL = os.environ.get("HASHNERF_USE_SYCL", "0") == "1"
+if _USE_SYCL:
+    from sycl_ops import FusedHashEncode
 
 class HashEmbedder(nn.Module):
     def __init__(self, bounding_box, n_levels=16, n_features_per_level=2,\
@@ -57,6 +62,24 @@ class HashEmbedder(nn.Module):
 
     def forward(self, x):
         # x is 3D point position: B x 3
+
+        # SYCL fast path -- fused 16-level hash encoding in a single GPU kernel
+        if _USE_SYCL:
+            bbox_min = self.bounding_box[0].to(x.device)
+            bbox_max = self.bounding_box[1].to(x.device)
+            embeddings_stacked = torch.stack([e.weight for e in self.embeddings])  # [16, T, 2]
+            encoded, keep_mask = FusedHashEncode.apply(
+                x.contiguous(),
+                embeddings_stacked,
+                bbox_min.contiguous(),
+                bbox_max.contiguous(),
+                float(self.base_resolution),
+                float(self.b),
+                self.log2_hashmap_size
+            )
+            return encoded, keep_mask
+
+        # Original PyTorch path (unchanged)
         x_embedded_all = []
         for i in range(self.n_levels):
             resolution = torch.floor(self.base_resolution * self.b**i)
