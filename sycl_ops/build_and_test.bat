@@ -6,7 +6,7 @@ set "VSINSTALLDIR=C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools"
 set "MSVC_VER=14.44.35207"
 set "WKITS_VER=10.0.22621.0"
 
-REM Windows Kits
+REM MSBuild and Common7 tools
 set "PATH=%VSINSTALLDIR%\MSBuild\Current\Bin\amd64;%VSINSTALLDIR%\Common7\IDE;%VSINSTALLDIR%\Common7\Tools;%PATH%"
 
 REM MSVC toolchain
@@ -22,7 +22,7 @@ set "LIB=C:\Program Files (x86)\Windows Kits\10\lib\%WKITS_VER%\ucrt\x64;C:\Prog
 
 REM Intel oneAPI DPC++ compiler
 set "PATH=C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;%PATH%"
-set "LIB=C:\Program Files (x86)\Intel\oneAPI\compiler\2026.0\lib;%LIB%"
+set "LIB=C:\Program Files (x86)\Intel\oneAPI\compiler\latest\lib;%LIB%"
 
 echo.
 echo Checking link.exe...
@@ -32,7 +32,7 @@ echo Checking icx...
 where icx
 echo.
 
-cd /d Z:\nerf_and_3dGS\HashNeRF-pytorch\sycl_ops
+cd /d "%~dp0"
 icx -fsycl test_dpcpp.cpp -o test_dpcpp.exe
 if %ERRORLEVEL% NEQ 0 (
     echo COMPILATION FAILED with exit code %ERRORLEVEL%
