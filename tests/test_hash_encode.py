@@ -10,13 +10,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 # We import sycl_ops directly to get the fused kernel.
 
 from hash_encoding import HashEmbedder
-from sycl_ops import FusedHashEncode
+
+try:
+    from sycl_ops import FusedHashEncode
+except (ImportError, RuntimeError):
+    FusedHashEncode = None
 
 
 def test_fused_same_as_pytorch():
     """SYCL kernel must match pure PyTorch output to within 1e-4."""
     if not torch.xpu.is_available():
         print("SKIPPED: XPU device not available")
+        return
+    if FusedHashEncode is None:
+        print("SKIPPED: sycl_ops not available (oneAPI not installed?)")
         return
 
     device = torch.device("xpu")
